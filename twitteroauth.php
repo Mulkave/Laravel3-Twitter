@@ -44,6 +44,7 @@ class TwitterAuthenticator {
    * Set API URLS
    */
   function accessTokenURL()  { return 'https://api.twitter.com/oauth/access_token'; }
+  function bearerTokenURL()  { return 'https://api.twitter.com/oauth2/token'; }
   function authenticateURL() { return 'https://api.twitter.com/oauth/authenticate'; }
   function authorizeURL()    { return 'https://api.twitter.com/oauth/authorize'; }
   function requestTokenURL() { return 'https://api.twitter.com/oauth/request_token'; }
@@ -248,5 +249,48 @@ class TwitterAuthenticator {
       $this->http_header[$key] = $value;
     }
     return strlen($header);
+  }
+
+  function bearerCacheKey($bearer_credentials)
+  {
+    return sprintf('twitter_bearer_%s', $bearer_credentials);
+  }
+
+  function getBearerAccessToken()
+  {
+    $consumer = $this->consumer;
+    $encoded_consumer_key             = urlencode($consumer->key);
+    $encoded_consumer_secret          = urlencode($consumer->secret);
+    $bearer_token_credentials         = sprintf('%s:%s', $encoded_consumer_key, $encoded_consumer_secret);
+    $encoded_bearer_token_credentials = base64_encode($bearer_token_credentials);
+
+    $cache_key = $this->bearerCacheKey($bearer_token_credentials);
+
+    if (Cache::has($cache_key))
+    {
+      return Cache::get($cache_key);
+    } else {
+      $bearer_token_request = array(
+        'url'     => $this->bearerTokenURL(),
+        'params'  => array('grant_type'=>'client_credentials'),
+        'headers' => array(
+          'POST /oauth2/token HTTP/1.1',
+          'Host: api.twitter.com',
+          'User-Agent: Najem.com Testing v.1',
+          'Authorization: Basic '.$encoded_bearer_token_credentials,
+          'Content-Type: application/x-www-form-urlencoded;charset=UTF-8',
+          'Content-Length: 29'
+        )
+    );
+
+    $response = json_decode(HTTP::post($bearer_token_request));
+
+    if(isset($response->errors))
+    {
+      throw new Exception('Twitter Bearer Access Token: '.$response->errors->message);
+    }
+      Cache::forever($cache_key, $response->access_token);
+      return $response->access_token;
+    }
   }
 }
